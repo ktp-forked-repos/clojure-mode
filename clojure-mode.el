@@ -1886,6 +1886,19 @@ the cached value will be updated automatically."
 (defvar-local clojure-cached-ns nil
   "A buffer ns cache used to speed up ns-related operations.")
 
+(defun clojure--find-ns-in-direction (dir)
+  "Return the nearest namespace in a specific direction.
+DIR is `forward' or `backward'."
+  (let ((candidate)
+        (fn (if (eq dir 'forward)
+                #'search-forward-regexp
+              #'search-backward-regexp)))
+    (while (and (not candidate)
+                (funcall fn clojure-namespace-name-regex nil t))
+      (unless (or (clojure--in-string-p) (clojure--in-comment-p))
+        (setq candidate (match-string-no-properties 4))))
+    candidate))
+
 (defun clojure-find-ns ()
   "Return the namespace of the current Clojure buffer.
 Return the namespace closest to point and above it.  If there are
@@ -1894,19 +1907,16 @@ no namespaces above point, return the first one in the buffer.
 The results will be cached if `clojure-cache-ns' is set to t."
   (if (and clojure-cache-ns clojure-cached-ns)
       clojure-cached-ns
-    (let ((ns (save-excursion
-                (save-restriction
-                  (widen)
+    (let* ((ns (save-excursion
+                 (save-restriction
+                   (widen)
 
-                  ;; Move to top-level to avoid searching from inside ns
-                  (ignore-errors (while t (up-list nil t t)))
+                   ;; Move to top-level to avoid searching from inside ns
+                   (ignore-errors (while t (up-list nil t t)))
 
-                  ;; The closest ns form above point.
-                  (when (or (re-search-backward clojure-namespace-name-regex nil t)
-                            ;; Or any form at all.
-                            (and (goto-char (point-min))
-                                 (re-search-forward clojure-namespace-name-regex nil t)))
-                    (match-string-no-properties 4))))))
+                   ;; Move to closest ns form above point.
+                   (or (clojure--find-ns-in-direction 'backward)
+                       (clojure--find-ns-in-direction 'forward))))))
       (setq clojure-cached-ns ns)
       ns)))
 
@@ -2383,6 +2393,10 @@ See: https://github.com/clojure-emacs/clj-refactor.el/wiki/cljr-cycle-privacy"
 (defun clojure--in-string-p ()
   "Check whether the point is currently in a string."
   (nth 3 (syntax-ppss)))
+
+(defun clojure--in-comment-p ()
+  "Check whether the point is currently in a comment."
+  (nth 4 (syntax-ppss)))
 
 (defun clojure--goto-if ()
   "Find the first surrounding if or if-not expression."
